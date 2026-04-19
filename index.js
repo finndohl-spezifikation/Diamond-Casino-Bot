@@ -495,7 +495,7 @@ client.on('interactionCreate', async (interaction) => {
       const userId = customId.split('|')[2];
       if (interaction.user.id !== userId) return;
       const bet = sm.parseBet(interaction.fields.getTextInputValue('bet_amount'));
-      if (isNaN(bet) || bet < 1000 || bet > 250000) return interaction.reply({ content: '\u274C Ung\xFCltiger Einsatz!', flags: MessageFlags.Ephemeral });
+      if (isNaN(bet) || bet < 1000 || bet > 250000) return interaction.reply({ content: '\u274C Einsatz muss zwischen **1.000** und **250.000** Jetons liegen!', flags: MessageFlags.Ephemeral });
       const bal = eco.get(userId);
       if (bal < bet) return interaction.reply({ content: `\u274C Nicht genug Jetons! Du hast **${bal.toLocaleString('de-DE')}**.`, flags: MessageFlags.Ephemeral });
       const session = pk.createSession(userId, interaction.user.username, bet);
@@ -512,7 +512,7 @@ client.on('interactionCreate', async (interaction) => {
       if (!session || session.phase !== 'lobby') return interaction.reply({ content: '\u274C Lobby nicht mehr aktiv.', flags: MessageFlags.Ephemeral });
       if (session.players.find((p) => p.userId === interaction.user.id)) return interaction.reply({ content: '\u274C Du bist bereits dabei!', flags: MessageFlags.Ephemeral });
       const bet = sm.parseBet(interaction.fields.getTextInputValue('bet_amount'));
-      if (isNaN(bet) || bet < 1000 || bet > 250000) return interaction.reply({ content: '\u274C Ung\xFCltiger Einsatz!', flags: MessageFlags.Ephemeral });
+      if (isNaN(bet) || bet < 1000 || bet > 250000) return interaction.reply({ content: '\u274C Einsatz muss zwischen **1.000** und **250.000** Jetons liegen!', flags: MessageFlags.Ephemeral });
       const bal = eco.get(interaction.user.id);
       if (bal < bet) return interaction.reply({ content: `\u274C Nicht genug Jetons! Du hast **${bal.toLocaleString('de-DE')}**.`, flags: MessageFlags.Ephemeral });
       session.players.push(pk.createPlayer(interaction.user.id, interaction.user.username, bet));
