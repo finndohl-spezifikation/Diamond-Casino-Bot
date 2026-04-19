@@ -85,7 +85,7 @@ const commands = [
   new SlashCommandBuilder().setName('roulette').setDescription('\uD83C\uDFB2 Spiele Roulette (bis zu 4 Spieler)'),
   new SlashCommandBuilder().setName('inside-track').setDescription('\uD83C\uDFB4 Pferde-Rennen im Inside Track'),
   new SlashCommandBuilder().setName('blackjack').setDescription('\uD83C\uDCCF Spiele Blackjack (bis zu 4 Spieler)'),
-  new SlashCommandBuilder().setName('poker').setDescription('\uD83C\uDCCF Spiele Texas Hold\u2019em Poker (bis zu 4 Spieler)'),
+  new SlashCommandBuilder().setName('poker').setDescription('\uD83C\uDCCF Spiele 3-Karten Poker (bis zu 4 Spieler)'),
 ].map((c) => c.toJSON());
 
 /* ── Hilfsfunktionen ── */
@@ -762,50 +762,29 @@ client.on('interactionCreate', async (interaction) => {
         if (!session || session.phase !== 'lobby') return interaction.reply({ content: '\u274C Keine aktive Lobby.', flags: MessageFlags.Ephemeral });
         await interaction.deferUpdate();
         session.deck = pk.createDeck();
-        /* Eins\xE4tze abbuchen & Karten austeilen */
-        for (const p of session.players) { eco.remove(p.userId, p.bet); p.hand = [session.deck.pop(), session.deck.pop()]; }
-        /* Burn + 5 community cards vorbereiten (noch nicht zeigen) */
-        session.deck.pop(); // burn
-        session.fullCommunity = [session.deck.pop(), session.deck.pop(), session.deck.pop(), session.deck.pop(), session.deck.pop()];
-        session.community = [];
-        session.phase = 'pre';
-        return interaction.editReply({ embeds: [pk.buildGameEmbed(session)], components: pk.gameButtons(hostId, 'pre') });
+        for (const p of session.players) {
+          eco.remove(p.userId, p.bet);
+          p.hand = [session.deck.pop(), session.deck.pop(), session.deck.pop()];
+        }
+        session.phase = 'playing';
+        return interaction.editReply({ embeds: [pk.buildDealtEmbed(session)], components: pk.revealButton(hostId) });
       }
 
       if (!session) return interaction.reply({ content: '\u274C Kein aktives Spiel.', flags: MessageFlags.Ephemeral });
       await interaction.deferUpdate();
 
-      if (action === 'flop') {
-        session.community = session.fullCommunity.slice(0, 3);
-        session.phase = 'flop';
-        return interaction.editReply({ embeds: [pk.buildGameEmbed(session)], components: pk.gameButtons(hostId, 'flop') });
-      }
-      if (action === 'turn') {
-        session.community = session.fullCommunity.slice(0, 4);
-        session.phase = 'turn';
-        return interaction.editReply({ embeds: [pk.buildGameEmbed(session)], components: pk.gameButtons(hostId, 'turn') });
-      }
-      if (action === 'river') {
-        session.community = session.fullCommunity.slice(0, 5);
-        session.phase = 'river';
-        return interaction.editReply({ embeds: [pk.buildGameEmbed(session)], components: pk.gameButtons(hostId, 'river') });
-      }
       if (action === 'showdown') {
         session.phase = 'done';
         const pot = session.players.reduce((s, p) => s + p.bet, 0);
-        /* Gewinner ermitteln */
-        let best = null, bestScore = null;
+        let bestScore = null;
+        for (const p of session.players) p._score = pk.evalThree(p.hand);
         for (const p of session.players) {
-          const bh = pk.bestHand([...p.hand, ...session.community]);
-          p._score = bh.score;
+          if (!bestScore || pk.cmpScore(p._score, bestScore) > 0) bestScore = p._score;
         }
+        const winners = session.players.filter((p) => pk.cmpScore(p._score, bestScore) === 0);
+        const splitPot = Math.floor(pot / winners.length);
         for (const p of session.players) {
-          if (!bestScore || pk.cmpScore(p._score, bestScore) > 0) { best = [p]; bestScore = p._score; }
-          else if (pk.cmpScore(p._score, bestScore) === 0) { best.push(p); }
-        }
-        const splitPot = Math.floor(pot / best.length);
-        for (const p of session.players) {
-          if (best.find((b) => b.userId === p.userId)) { p.payout = splitPot; eco.add(p.userId, splitPot); }
+          if (winners.find((w) => w.userId === p.userId)) { p.payout = splitPot; eco.add(p.userId, splitPot); }
           else { p.payout = 0; }
         }
         return interaction.editReply({ embeds: [pk.buildShowdownEmbed(session)], components: pk.endRow(hostId) });
