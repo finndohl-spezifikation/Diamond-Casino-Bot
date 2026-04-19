@@ -12,6 +12,8 @@ const eco         = require('./economy');
 const sm          = require('./slotMachine');
 const hr          = require('./horseRace');
 const bj          = require('./blackjack');
+const rl          = require('./roulette');
+const pk          = require('./poker');
 const memberStore = require('./memberStore');
 
 const TOKEN      = process.env.DISCORD_TOKEN;
@@ -44,6 +46,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const sessions   = new Map();
 const hrSessions = new Map();
 const bjSessions = new Map();
+const rlSessions = new Map();
+const pkSessions = new Map();
 
 /* ── Ticket-Typen ── */
 const TICKET_TYPES = {
@@ -77,9 +81,10 @@ const commands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
 
   new SlashCommandBuilder().setName('slot-machine').setDescription('\uD83C\uDFB0 Spiele an der Slot Machine'),
-  new SlashCommandBuilder().setName('roulette').setDescription('\uD83C\uDFB2 Spiele Roulette'),
+  new SlashCommandBuilder().setName('roulette').setDescription('\uD83C\uDFB2 Spiele Roulette (bis zu 4 Spieler)'),
   new SlashCommandBuilder().setName('inside-track').setDescription('\uD83C\uDFB4 Pferde-Rennen im Inside Track'),
   new SlashCommandBuilder().setName('blackjack').setDescription('\uD83C\uDCCF Spiele Blackjack (bis zu 4 Spieler)'),
+  new SlashCommandBuilder().setName('poker').setDescription('\uD83C\uDCCF Spiele Texas Hold\u2019em Poker (bis zu 4 Spieler)'),
 ].map((c) => c.toJSON());
 
 /* ── Hilfsfunktionen ── */
@@ -356,7 +361,13 @@ client.on('interactionCreate', async (interaction) => {
 
     if (cmd === 'roulette') {
       if (!checkChannel(interaction, CH_ROULETTE)) return;
-      return interaction.reply({ content: '\uD83C\uDFB2 Roulette kommt bald! Bleib gespannt.', flags: MessageFlags.Ephemeral });
+      if (eco.get(interaction.user.id) < 1000) return interaction.reply({ content: '\uD83D\uDED2 Mindestens **1.000 Jetons** n\xF6tig!', flags: MessageFlags.Ephemeral });
+      return interaction.showModal(rl.buildModal(interaction.user.id));
+    }
+
+    if (cmd === 'poker') {
+      if (eco.get(interaction.user.id) < 1000) return interaction.reply({ content: '\uD83D\uDED2 Mindestens **1.000 Jetons** n\xF6tig!', flags: MessageFlags.Ephemeral });
+      return interaction.showModal(pk.buildModal(interaction.user.id));
     }
 
     if (cmd === 'inside-track') {
@@ -424,6 +435,87 @@ client.on('interactionCreate', async (interaction) => {
       session.players.push(bj.createPlayer(interaction.user.id, interaction.user.username, bet));
       const full = session.players.length >= bj.MAX_PLAYERS;
       if (session.message) await session.message.edit({ embeds: [bj.buildLobbyEmbed(session)], components: bj.lobbyButtons(hostId, full) }).catch(() => {});
+      return interaction.reply({ content: `\u2705 Beigetreten! Einsatz: **${bet.toLocaleString('de-DE')} Jetons**`, flags: MessageFlags.Ephemeral });
+    }
+
+    /* ── Roulette Host Modal ── */
+    if (customId.startsWith('rl|modal|')) {
+      const userId = customId.split('|')[2];
+      if (interaction.user.id !== userId) return;
+      const bet = sm.parseBet(interaction.fields.getTextInputValue('bet_amount'));
+      if (isNaN(bet) || bet < 1000 || bet > 250000) return interaction.reply({ content: '\u274C Ung\xFCltiger Einsatz!', flags: MessageFlags.Ephemeral });
+      const bal = eco.get(userId);
+      if (bal < bet) return interaction.reply({ content: `\u274C Nicht genug Jetons! Du hast **${bal.toLocaleString('de-DE')}**.`, flags: MessageFlags.Ephemeral });
+      const session = rl.createSession(userId, interaction.user.username, bet);
+      rlSessions.set(userId, session);
+      await interaction.reply({ embeds: [rl.buildLobbyEmbed(session)], components: rl.lobbyButtons(userId, false, false) });
+      session.message = await interaction.fetchReply();
+      return interaction.followUp({ embeds: [rl.buildBetSelectEmbed(interaction.user.username, bet)], components: rl.betTypeRows(userId, userId), flags: MessageFlags.Ephemeral });
+    }
+
+    /* ── Roulette Join Modal ── */
+    if (customId.startsWith('rl|joinmodal|')) {
+      const hostId  = customId.split('|')[2];
+      const session = rlSessions.get(hostId);
+      if (!session || session.phase !== 'lobby') return interaction.reply({ content: '\u274C Lobby nicht mehr aktiv.', flags: MessageFlags.Ephemeral });
+      if (session.players.find((p) => p.userId === interaction.user.id)) return interaction.reply({ content: '\u274C Du bist bereits dabei!', flags: MessageFlags.Ephemeral });
+      const bet = sm.parseBet(interaction.fields.getTextInputValue('bet_amount'));
+      if (isNaN(bet) || bet < 1000 || bet > 250000) return interaction.reply({ content: '\u274C Ung\xFCltiger Einsatz!', flags: MessageFlags.Ephemeral });
+      const bal = eco.get(interaction.user.id);
+      if (bal < bet) return interaction.reply({ content: `\u274C Nicht genug Jetons! Du hast **${bal.toLocaleString('de-DE')}**.`, flags: MessageFlags.Ephemeral });
+      session.players.push({ userId: interaction.user.id, username: interaction.user.username, bet, betType: null, number: null, ready: false });
+      const full = session.players.length >= rl.MAX_PLAYERS;
+      if (session.message) await session.message.edit({ embeds: [rl.buildLobbyEmbed(session)], components: rl.lobbyButtons(hostId, full, rl.allReady(session)) }).catch(() => {});
+      await interaction.reply({ embeds: [rl.buildBetSelectEmbed(interaction.user.username, bet)], components: rl.betTypeRows(hostId, interaction.user.id), flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    /* ── Roulette Zahl Modal ── */
+    if (customId.startsWith('rl|zahlmodal|')) {
+      const parts  = customId.split('|');
+      const hostId = parts[2], userId = parts[3];
+      if (interaction.user.id !== userId) return;
+      const session = rlSessions.get(hostId);
+      if (!session) return interaction.reply({ content: '\u274C Session abgelaufen.', flags: MessageFlags.Ephemeral });
+      const num = parseInt(interaction.fields.getTextInputValue('zahl'), 10);
+      if (isNaN(num) || num < 0 || num > 36) return interaction.reply({ content: '\u274C Zahl muss zwischen 0 und 36 liegen!', flags: MessageFlags.Ephemeral });
+      const player = session.players.find((p) => p.userId === userId);
+      if (!player) return interaction.reply({ content: '\u274C Spieler nicht gefunden.', flags: MessageFlags.Ephemeral });
+      player.betType = 'zahl';
+      player.number  = num;
+      player.ready   = true;
+      if (session.message) await session.message.edit({ embeds: [rl.buildLobbyEmbed(session)], components: rl.lobbyButtons(hostId, session.players.length >= rl.MAX_PLAYERS, rl.allReady(session)) }).catch(() => {});
+      return interaction.reply({ content: `\u2705 Du setzt auf die **${num}**!`, flags: MessageFlags.Ephemeral });
+    }
+
+    /* ── Poker Host Modal ── */
+    if (customId.startsWith('pk|modal|')) {
+      const userId = customId.split('|')[2];
+      if (interaction.user.id !== userId) return;
+      const bet = sm.parseBet(interaction.fields.getTextInputValue('bet_amount'));
+      if (isNaN(bet) || bet < 1000 || bet > 250000) return interaction.reply({ content: '\u274C Ung\xFCltiger Einsatz!', flags: MessageFlags.Ephemeral });
+      const bal = eco.get(userId);
+      if (bal < bet) return interaction.reply({ content: `\u274C Nicht genug Jetons! Du hast **${bal.toLocaleString('de-DE')}**.`, flags: MessageFlags.Ephemeral });
+      const session = pk.createSession(userId, interaction.user.username, bet);
+      pkSessions.set(userId, session);
+      await interaction.reply({ embeds: [pk.buildLobbyEmbed(session)], components: pk.lobbyButtons(userId, false) });
+      session.message = await interaction.fetchReply();
+      return;
+    }
+
+    /* ── Poker Join Modal ── */
+    if (customId.startsWith('pk|joinmodal|')) {
+      const hostId  = customId.split('|')[2];
+      const session = pkSessions.get(hostId);
+      if (!session || session.phase !== 'lobby') return interaction.reply({ content: '\u274C Lobby nicht mehr aktiv.', flags: MessageFlags.Ephemeral });
+      if (session.players.find((p) => p.userId === interaction.user.id)) return interaction.reply({ content: '\u274C Du bist bereits dabei!', flags: MessageFlags.Ephemeral });
+      const bet = sm.parseBet(interaction.fields.getTextInputValue('bet_amount'));
+      if (isNaN(bet) || bet < 1000 || bet > 250000) return interaction.reply({ content: '\u274C Ung\xFCltiger Einsatz!', flags: MessageFlags.Ephemeral });
+      const bal = eco.get(interaction.user.id);
+      if (bal < bet) return interaction.reply({ content: `\u274C Nicht genug Jetons! Du hast **${bal.toLocaleString('de-DE')}**.`, flags: MessageFlags.Ephemeral });
+      session.players.push(pk.createPlayer(interaction.user.id, interaction.user.username, bet));
+      const full = session.players.length >= pk.MAX_PLAYERS;
+      if (session.message) await session.message.edit({ embeds: [pk.buildLobbyEmbed(session)], components: pk.lobbyButtons(hostId, full) }).catch(() => {});
       return interaction.reply({ content: `\u2705 Beigetreten! Einsatz: **${bet.toLocaleString('de-DE')} Jetons**`, flags: MessageFlags.Ephemeral });
     }
   }
@@ -560,6 +652,161 @@ client.on('interactionCreate', async (interaction) => {
         current.done = true;
         if (bj.handValue(current.hand) > 21) current.result = 'bust';
         return await bjNextTurn(interaction, hostId);
+      }
+    }
+
+    /* ══ ROULETTE BUTTONS ══ */
+    if (customId.startsWith('rl|')) {
+      const parts  = customId.split('|');
+      const action = parts[1];
+
+      /* Bet type selection (ephemeral message) */
+      if (action === 'bet') {
+        const type = parts[2], hostId = parts[3], userId = parts[4];
+        if (interaction.user.id !== userId) return interaction.reply({ content: '\u274C Nicht dein Bet!', flags: MessageFlags.Ephemeral });
+        const session = rlSessions.get(hostId);
+        if (!session) return interaction.update({ content: '\u274C Session abgelaufen.', embeds: [], components: [] });
+        const player = session.players.find((p) => p.userId === userId);
+        if (!player) return interaction.update({ content: '\u274C Spieler nicht gefunden.', embeds: [], components: [] });
+        player.betType = type; player.ready = true;
+        if (session.message) await session.message.edit({ embeds: [rl.buildLobbyEmbed(session)], components: rl.lobbyButtons(hostId, session.players.length >= rl.MAX_PLAYERS, rl.allReady(session)) }).catch(() => {});
+        return interaction.update({ embeds: [new EmbedBuilder().setTitle('\u2705 Wette gesetzt!').setDescription(`Du setzt auf **${rl.BET_TYPES[type].label}** f\xFCr **${player.bet.toLocaleString('de-DE')} Jetons**.\nWarte auf den Gastgeber.`).setColor(LIGHT_BLUE).setFooter({ text: BRAND })], components: [] });
+      }
+
+      if (action === 'betzahl') {
+        const hostId = parts[2], userId = parts[3];
+        if (interaction.user.id !== userId) return interaction.reply({ content: '\u274C Nicht dein Bet!', flags: MessageFlags.Ephemeral });
+        return interaction.showModal(rl.buildZahlModal(hostId, userId));
+      }
+
+      const hostId  = parts[2];
+      const session = rlSessions.get(hostId);
+
+      if (action === 'quit') {
+        rlSessions.delete(hostId);
+        return interaction.update({ embeds: [new EmbedBuilder().setTitle('\uD83C\uDFB2 Roulette beendet').setDescription('\uD83C\uDFE6 Bis zum n\xE4chsten Mal!').setColor(LIGHT_BLUE).setFooter({ text: BRAND })], components: [] });
+      }
+
+      if (action === 'join') {
+        if (!session || session.phase !== 'lobby') return interaction.reply({ content: '\u274C Lobby nicht mehr aktiv.', flags: MessageFlags.Ephemeral });
+        if (session.players.find((p) => p.userId === interaction.user.id)) return interaction.reply({ content: '\u274C Du bist bereits dabei!', flags: MessageFlags.Ephemeral });
+        if (session.players.length >= rl.MAX_PLAYERS) return interaction.reply({ content: '\u274C Lobby ist voll!', flags: MessageFlags.Ephemeral });
+        return interaction.showModal(rl.buildJoinModal(hostId));
+      }
+
+      if (action === 'again') {
+        rlSessions.delete(hostId);
+        if (interaction.user.id !== hostId) return interaction.reply({ content: '\u274C Nur der Gastgeber kann neu starten.', flags: MessageFlags.Ephemeral });
+        if (eco.get(hostId) < 1000) return interaction.update({ embeds: [new EmbedBuilder().setTitle('\uD83C\uDFB2 Roulette').setDescription('\uD83D\uDED2 Nicht genug Jetons!').setColor(LIGHT_BLUE)], components: [] });
+        return interaction.showModal(rl.buildModal(hostId));
+      }
+
+      if (action === 'spin') {
+        if (interaction.user.id !== hostId) return interaction.reply({ content: '\u274C Nur der Gastgeber kann drehen!', flags: MessageFlags.Ephemeral });
+        if (!session || !rl.allReady(session)) return interaction.reply({ content: '\u274C Noch nicht alle Spieler bereit!', flags: MessageFlags.Ephemeral });
+        await interaction.deferUpdate();
+        const result = rl.spin();
+        session.result = result;
+        /* Jetons berechnen */
+        for (const p of session.players) {
+          const bt   = rl.BET_TYPES[p.betType];
+          const won  = p.betType === 'zahl' ? p.number === result : bt.check(result);
+          eco.remove(p.userId, p.bet);
+          p.payout = won ? p.bet * bt.payout : 0;
+          if (p.payout > 0) eco.add(p.userId, p.payout);
+        }
+        session.phase = 'done';
+        /* Kurze Spin-Animation */
+        for (let i = 0; i < 4; i++) {
+          const rand = rl.spin();
+          const col  = rl.getColor(rand);
+          const ce   = col === 'green' ? '\uD83D\uDFE2' : col === 'red' ? '\uD83D\uDD34' : '\u26AB';
+          await interaction.editReply({ embeds: [new EmbedBuilder().setTitle(`\uD83C\uDFB2 Das Rad dreht sich... ${ce} **${rand}**`).setColor(LIGHT_BLUE)], components: [] });
+          await sleep(700);
+        }
+        return interaction.editReply({ embeds: [rl.buildResultEmbed(session)], components: rl.endRow(hostId) });
+      }
+    }
+
+    /* ══ POKER BUTTONS ══ */
+    if (customId.startsWith('pk|')) {
+      const parts  = customId.split('|');
+      const action = parts[1];
+      const hostId = parts[2];
+      const session = pkSessions.get(hostId);
+
+      if (action === 'quit') {
+        pkSessions.delete(hostId);
+        return interaction.update({ embeds: [new EmbedBuilder().setTitle('\uD83C\uDCCF Poker beendet').setDescription('\uD83C\uDFE6 Bis zum n\xE4chsten Mal!').setColor(LIGHT_BLUE).setFooter({ text: BRAND })], components: [] });
+      }
+
+      if (action === 'again') {
+        pkSessions.delete(hostId);
+        if (interaction.user.id !== hostId) return interaction.reply({ content: '\u274C Nur der Gastgeber kann neu starten.', flags: MessageFlags.Ephemeral });
+        if (eco.get(hostId) < 1000) return interaction.update({ embeds: [new EmbedBuilder().setTitle('\uD83C\uDCCF Poker').setDescription('\uD83D\uDED2 Nicht genug Jetons!').setColor(LIGHT_BLUE)], components: [] });
+        return interaction.showModal(pk.buildModal(hostId));
+      }
+
+      if (action === 'join') {
+        if (!session || session.phase !== 'lobby') return interaction.reply({ content: '\u274C Lobby nicht mehr aktiv.', flags: MessageFlags.Ephemeral });
+        if (session.players.find((p) => p.userId === interaction.user.id)) return interaction.reply({ content: '\u274C Du bist bereits dabei!', flags: MessageFlags.Ephemeral });
+        if (session.players.length >= pk.MAX_PLAYERS) return interaction.reply({ content: '\u274C Lobby ist voll!', flags: MessageFlags.Ephemeral });
+        if (eco.get(interaction.user.id) < 1000) return interaction.reply({ content: '\uD83D\uDED2 Mindestens 1.000 Jetons n\xF6tig!', flags: MessageFlags.Ephemeral });
+        return interaction.showModal(pk.buildJoinModal(hostId));
+      }
+
+      if (action === 'start') {
+        if (interaction.user.id !== hostId) return interaction.reply({ content: '\u274C Nur der Gastgeber kann starten.', flags: MessageFlags.Ephemeral });
+        if (!session || session.phase !== 'lobby') return interaction.reply({ content: '\u274C Keine aktive Lobby.', flags: MessageFlags.Ephemeral });
+        await interaction.deferUpdate();
+        session.deck = pk.createDeck();
+        /* Eins\xE4tze abbuchen & Karten austeilen */
+        for (const p of session.players) { eco.remove(p.userId, p.bet); p.hand = [session.deck.pop(), session.deck.pop()]; }
+        /* Burn + 5 community cards vorbereiten (noch nicht zeigen) */
+        session.deck.pop(); // burn
+        session.fullCommunity = [session.deck.pop(), session.deck.pop(), session.deck.pop(), session.deck.pop(), session.deck.pop()];
+        session.community = [];
+        session.phase = 'pre';
+        return interaction.editReply({ embeds: [pk.buildGameEmbed(session)], components: pk.gameButtons(hostId, 'pre') });
+      }
+
+      if (!session) return interaction.reply({ content: '\u274C Kein aktives Spiel.', flags: MessageFlags.Ephemeral });
+      await interaction.deferUpdate();
+
+      if (action === 'flop') {
+        session.community = session.fullCommunity.slice(0, 3);
+        session.phase = 'flop';
+        return interaction.editReply({ embeds: [pk.buildGameEmbed(session)], components: pk.gameButtons(hostId, 'flop') });
+      }
+      if (action === 'turn') {
+        session.community = session.fullCommunity.slice(0, 4);
+        session.phase = 'turn';
+        return interaction.editReply({ embeds: [pk.buildGameEmbed(session)], components: pk.gameButtons(hostId, 'turn') });
+      }
+      if (action === 'river') {
+        session.community = session.fullCommunity.slice(0, 5);
+        session.phase = 'river';
+        return interaction.editReply({ embeds: [pk.buildGameEmbed(session)], components: pk.gameButtons(hostId, 'river') });
+      }
+      if (action === 'showdown') {
+        session.phase = 'done';
+        const pot = session.players.reduce((s, p) => s + p.bet, 0);
+        /* Gewinner ermitteln */
+        let best = null, bestScore = null;
+        for (const p of session.players) {
+          const bh = pk.bestHand([...p.hand, ...session.community]);
+          p._score = bh.score;
+        }
+        for (const p of session.players) {
+          if (!bestScore || pk.cmpScore(p._score, bestScore) > 0) { best = [p]; bestScore = p._score; }
+          else if (pk.cmpScore(p._score, bestScore) === 0) { best.push(p); }
+        }
+        const splitPot = Math.floor(pot / best.length);
+        for (const p of session.players) {
+          if (best.find((b) => b.userId === p.userId)) { p.payout = splitPot; eco.add(p.userId, splitPot); }
+          else { p.payout = 0; }
+        }
+        return interaction.editReply({ embeds: [pk.buildShowdownEmbed(session)], components: pk.endRow(hostId) });
       }
     }
   }
