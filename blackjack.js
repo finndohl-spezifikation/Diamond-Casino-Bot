@@ -127,7 +127,7 @@ function buildGameEmbed(session) {
     ? `${formatHand(dealerHand)} **(${handValue(dealerHand)})**${handValue(dealerHand) > 21 ? ' \uD83D\uDCA5' : ''}`
     : `${dealerHand[0].rank}${dealerHand[0].suit} \uD83C\uDCCF (?)`;
 
-  let desc = `\uD83E\uDD16 **Dealer:** ${dStr}\n\n`;
+  let desc = `\uD83E\uDD16 **Groupier:** ${dStr}\n\n`;
   for (let i = 0; i < players.length; i++) {
     const p    = players[i];
     const pVal = handValue(p.hand);
@@ -163,7 +163,7 @@ function actionButtons(hostId, canDouble) {
 function buildResultEmbed(session) {
   const { players, dealerHand } = session;
   const dVal = handValue(dealerHand);
-  let desc = `\uD83E\uDD16 **Dealer:** ${formatHand(dealerHand)} **(${dVal})**${dVal > 21 ? ' \u2014 \uD83D\uDCA5 \xDCberkauft!' : ''}\n\n`;
+  let desc = `\uD83E\uDD16 **Groupier:** ${formatHand(dealerHand)} **(${dVal})**${dVal > 21 ? ' \u2014 \uD83D\uDCA5 \xDCberkauft!' : ''}\n\n`;
   for (const p of players) {
     const pVal = handValue(p.hand);
     let res;
