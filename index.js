@@ -35,6 +35,7 @@ const CH_SLOT       = '1495234695624134808';
 const CH_ROULETTE   = '1495234739139772456';
 const CH_BLACKJACK  = '1495234818810577018';
 const CH_TRACK      = '1495235200689373224';
+const CH_POKER      = '1495234770311974992';
 
 const LIGHT_BLUE = 0x00BFFF;
 const BRAND      = 'The Diamond Casino Richman';
@@ -366,6 +367,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     if (cmd === 'poker') {
+      if (!checkChannel(interaction, CH_POKER)) return;
       if (eco.get(interaction.user.id) < 1000) return interaction.reply({ content: '\uD83D\uDED2 Mindestens **1.000 Jetons** n\xF6tig!', flags: MessageFlags.Ephemeral });
       return interaction.showModal(pk.buildModal(interaction.user.id));
     }
@@ -391,7 +393,7 @@ client.on('interactionCreate', async (interaction) => {
       const userId = customId.split('|')[2];
       if (interaction.user.id !== userId) return;
       const bet = sm.parseBet(interaction.fields.getTextInputValue('bet_amount'));
-      if (isNaN(bet) || bet < 1000 || bet > 250000) return interaction.reply({ content: '\u274C Ung\xFCltiger Einsatz! Beispiel: `5000` oder `50K`', flags: MessageFlags.Ephemeral });
+      if (isNaN(bet) || bet < 1000 || bet > 15000) return interaction.reply({ content: '\u274C Einsatz muss zwischen **1.000** und **15.000** Jetons liegen!', flags: MessageFlags.Ephemeral });
       const bal = eco.get(userId);
       if (bal < bet) return interaction.reply({ content: `\u274C Nicht genug Jetons! Du hast **${bal.toLocaleString('de-DE')}**.`, flags: MessageFlags.Ephemeral });
       sessions.set(userId, { bet, spinning: false });
