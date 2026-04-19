@@ -1,14 +1,21 @@
 const fs = require('fs');
 const path = require('path');
 
-const DB = path.join(__dirname, 'jetons.json');
+const DATA_DIR = process.env.DATA_DIR || '/data';
+const DB = path.join(DATA_DIR, 'jetons.json');
+
+function ensureDir() {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+}
 
 function load() {
+  ensureDir();
   if (!fs.existsSync(DB)) { fs.writeFileSync(DB, '{}', 'utf8'); return {}; }
   try { return JSON.parse(fs.readFileSync(DB, 'utf8')); } catch { return {}; }
 }
 
 function save(data) {
+  ensureDir();
   fs.writeFileSync(DB, JSON.stringify(data, null, 2), 'utf8');
 }
 
