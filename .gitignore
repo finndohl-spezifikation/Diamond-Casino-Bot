@@ -1,9 +1,0 @@
-target/
-*.class
-*.jar
-!casino-bot-1.0.0.jar
-.env
-*.log
-.idea/
-*.iml
-.DS_Store
