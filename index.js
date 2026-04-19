@@ -2,7 +2,7 @@ require('dotenv').config();
 
 const {
   Client, GatewayIntentBits, EmbedBuilder,
-  REST, Routes, SlashCommandBuilder,
+  REST, Routes, SlashCommandBuilder, MessageFlags,
 } = require('discord.js');
 
 const eco = require('./economy');
@@ -48,7 +48,7 @@ function isAdmin(interaction) {
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
   console.log(`[INFO] Bot online als: ${client.user.tag}`);
   const rest = new REST({ version: '10' }).setToken(TOKEN);
   try {
@@ -75,12 +75,12 @@ client.on('interactionCreate', async (interaction) => {
         .setColor(0x00BFFF)
         .setFooter({ text: 'The Diamond Casino Richman' })
         .setTimestamp();
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     }
 
     if (cmd === 'jetons-give') {
       if (!isAdmin(interaction))
-        return interaction.reply({ content: '\u274C Du hast keine Berechtigung f\xFCr diesen Befehl!', ephemeral: true });
+        return interaction.reply({ content: '\u274C Du hast keine Berechtigung f\xFCr diesen Befehl!', flags: MessageFlags.Ephemeral });
       const target = interaction.options.getUser('spieler');
       const amount = interaction.options.getInteger('menge');
       const newBal = eco.add(target.id, amount);
@@ -98,7 +98,7 @@ client.on('interactionCreate', async (interaction) => {
 
     if (cmd === 'jetons-remove') {
       if (!isAdmin(interaction))
-        return interaction.reply({ content: '\u274C Du hast keine Berechtigung f\xFCr diesen Befehl!', ephemeral: true });
+        return interaction.reply({ content: '\u274C Du hast keine Berechtigung f\xFCr diesen Befehl!', flags: MessageFlags.Ephemeral });
       const target = interaction.options.getUser('spieler');
       const amount = interaction.options.getInteger('menge');
       const cur    = eco.get(target.id);
@@ -126,7 +126,7 @@ client.on('interactionCreate', async (interaction) => {
           content:
             '\uD83D\uDED2 Du brauchst mindestens **1.000 Jetons** zum Spielen!\n' +
             'Bitte einen Admin um Hilfe mit `/jetons-give`.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       sessions.set(interaction.user.id, { bet: 0, spinning: false });
       return interaction.showModal(sm.buildModal(interaction.user.id));
@@ -149,7 +149,7 @@ client.on('interactionCreate', async (interaction) => {
           '\u274C Ung\xFCltiger Einsatz!\n' +
           'Bitte gib einen Betrag zwischen **1.000** und **250.000** Jetons ein.\n' +
           'Beispiele: `5000`, `50K`, `250K`',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -159,7 +159,7 @@ client.on('interactionCreate', async (interaction) => {
         content:
           `\u274C Nicht genug Jetons!\n` +
           `Du hast **${bal.toLocaleString('de-DE')} Jetons**, brauchst aber **${bet.toLocaleString('de-DE')} Jetons**.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -176,7 +176,7 @@ client.on('interactionCreate', async (interaction) => {
     const ownerId = parts[parts.length - 1];
 
     if (interaction.user.id !== ownerId)
-      return interaction.reply({ content: '\u274C Das ist nicht deine Slot Machine!', ephemeral: true });
+      return interaction.reply({ content: '\u274C Das ist nicht deine Slot Machine!', flags: MessageFlags.Ephemeral });
 
     const session = sessions.get(ownerId);
 
@@ -202,27 +202,32 @@ client.on('interactionCreate', async (interaction) => {
       if (!session)
         return interaction.reply({
           content: '\u274C Sitzung abgelaufen. Nutze `/slot-machine` um neu zu starten.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       if (session.spinning)
-        return interaction.reply({ content: '\u23F3 Die Maschine dreht sich noch!', ephemeral: true });
+        return interaction.reply({ content: '\u23F3 Die Maschine dreht sich noch!', flags: MessageFlags.Ephemeral });
       await runSpin(interaction, ownerId, session.bet, false);
     }
   }
 });
 
 async function runSpin(interaction, userId, bet, isModal) {
+  if (isModal) {
+    await interaction.deferReply();
+  } else {
+    await interaction.deferUpdate();
+  }
+
   const session = sessions.get(userId);
   if (session) session.spinning = true;
 
   const balBefore = eco.get(userId);
   if (balBefore < bet) {
     if (session) session.spinning = false;
-    return interaction.reply({
+    return interaction.editReply({
       content:
         `\u274C Nicht genug Jetons!\n` +
         `Du hast **${balBefore.toLocaleString('de-DE')} Jetons**, brauchst aber **${bet.toLocaleString('de-DE')} Jetons**.`,
-      ephemeral: true,
     });
   }
 
@@ -233,12 +238,6 @@ async function runSpin(interaction, userId, bet, isModal) {
   if (result.win > 0) eco.add(userId, result.win);
 
   const finalBal = eco.get(userId);
-
-  if (isModal) {
-    await interaction.deferReply();
-  } else {
-    await interaction.deferUpdate();
-  }
 
   try {
     await interaction.editReply({ embeds: [sm.buildSpinEmbed(reels, bet, balBefore, 0)], components: [] });
