@@ -76,10 +76,6 @@ const commands = [
     .addIntegerOption((o) => o.setName('menge').setDescription('Wie viele? (1\u2013100)').setRequired(true).setMinValue(1).setMaxValue(100))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
 
-  new SlashCommandBuilder()
-    .setName('setup-tickets').setDescription('Postet das Ticket-Embed [Nur Staff]')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
-
   new SlashCommandBuilder().setName('slot-machine').setDescription('\uD83C\uDFB0 Spiele an der Slot Machine'),
   new SlashCommandBuilder().setName('roulette').setDescription('\uD83C\uDFB2 Spiele Roulette'),
   new SlashCommandBuilder().setName('inside-track').setDescription('\uD83C\uDFB4 Pferde-Rennen im Inside Track'),
@@ -186,12 +182,35 @@ const client = new Client({
 
 client.once('clientReady', async () => {
   console.log(`[INFO] Bot online als: ${client.user.tag}`);
+
   const rest = new REST({ version: '10' }).setToken(TOKEN);
   try {
     await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
     console.log('[INFO] Slash Commands registriert!');
   } catch (e) {
     console.error('[FEHLER] Commands:', e.message);
+  }
+
+  /* Ticket-Embed einmalig senden (falls noch kein Bot-Embed vorhanden) */
+  try {
+    const guild = client.guilds.cache.first();
+    if (guild) {
+      const ch = guild.channels.cache.get(TICKET_CH);
+      if (ch) {
+        const msgs = await ch.messages.fetch({ limit: 10 });
+        const alreadySent = msgs.some(
+          (m) => m.author.id === client.user.id && m.components.length > 0
+        );
+        if (!alreadySent) {
+          await ch.send({ embeds: [buildTicketEmbed()], components: [buildTicketSelectRow()] });
+          console.log('[INFO] Ticket-Embed gesendet.');
+        } else {
+          console.log('[INFO] Ticket-Embed bereits vorhanden, \xFCbersprungen.');
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[FEHLER] Ticket-Embed:', e.message);
   }
 });
 
@@ -326,14 +345,6 @@ client.on('interactionCreate', async (interaction) => {
         const deleted = await interaction.channel.bulkDelete(amount, true);
         return interaction.editReply({ content: `\u2705 **${deleted.size}** Nachricht(en) gel\xF6scht.` });
       } catch (e) { return interaction.editReply({ content: `\u274C Fehler: ${e.message}` }); }
-    }
-
-    if (cmd === 'setup-tickets') {
-      if (!isAdmin(interaction)) return interaction.reply({ content: '\u274C Kein Zugriff!', flags: MessageFlags.Ephemeral });
-      const ch = interaction.guild.channels.cache.get(TICKET_CH);
-      if (!ch) return interaction.reply({ content: '\u274C Ticket-Kanal nicht gefunden!', flags: MessageFlags.Ephemeral });
-      await ch.send({ embeds: [buildTicketEmbed()], components: [buildTicketSelectRow()] });
-      return interaction.reply({ content: '\u2705 Ticket-Embed wurde gepostet!', flags: MessageFlags.Ephemeral });
     }
 
     if (cmd === 'slot-machine') {
