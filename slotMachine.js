@@ -1,26 +1,60 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const {
+  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
+  ModalBuilder, TextInputBuilder, TextInputStyle,
+} = require('discord.js');
 
-const SPIN_ICON = '\uD83C\uDF00';
+const SPIN_ICON  = '\uD83C\uDF00';
+const LIGHT_BLUE = 0x00BFFF;
+const BRAND      = 'The Diamond Casino Richman';
 
-const SYMBOLS = [
-  { emoji: '\uD83C\uDF52', name: 'Kirsche',  weight: 30, mult: 2  },
-  { emoji: '\uD83C\uDF4B', name: 'Zitrone',  weight: 25, mult: 3  },
-  { emoji: '\uD83C\uDF4A', name: 'Orange',   weight: 20, mult: 4  },
-  { emoji: '\uD83D\uDD14', name: 'Glocke',   weight: 15, mult: 5  },
-  { emoji: '\u2B50',       name: 'Stern',    weight:  7, mult: 10 },
-  { emoji: '\uD83D\uDC8E', name: 'Diamant',  weight:  2, mult: 25 },
-  { emoji: '7\uFE0F\u20E3',name: 'Sieben',   weight:  1, mult: 50 },
+const BASE_SYMBOLS = [
+  { emoji: '\uD83C\uDF52', name: 'Kirsche',   mult: 2  },
+  { emoji: '\uD83C\uDF4B', name: 'Zitrone',   mult: 3  },
+  { emoji: '\uD83C\uDF4A', name: 'Orange',    mult: 4  },
+  { emoji: '\uD83D\uDD14', name: 'Glocke',    mult: 5  },
+  { emoji: '\u2B50',       name: 'Stern',     mult: 10 },
+  { emoji: '\uD83D\uDC8E', name: 'Diamant',   mult: 25 },
+  { emoji: '7\uFE0F\u20E3',name: 'Sieben',    mult: 50 },
 ];
 
-function weighted() {
-  const total = SYMBOLS.reduce((a, s) => a + s.weight, 0);
-  let r = Math.random() * total;
-  for (const s of SYMBOLS) { r -= s.weight; if (r <= 0) return s; }
-  return SYMBOLS[0];
+const TIERS = [
+  {
+    label:   '\u2B1C Normales Gl\xFCck',
+    min:     1000,
+    max:     9999,
+    weights: [30, 25, 20, 15,  7,  2,  1],
+  },
+  {
+    label:   '\uD83D\uDFE2 Erh\xF6htes Gl\xFCck',
+    min:     10000,
+    max:     49999,
+    weights: [26, 21, 17, 15, 11,  6,  4],
+  },
+  {
+    label:   '\uD83D\uDD25 Hohes Gl\xFCck',
+    min:     50000,
+    max:     250000,
+    weights: [22, 17, 14, 14, 15, 11,  7],
+  },
+];
+
+function getTier(bet) {
+  return TIERS.find((t) => bet >= t.min && bet <= t.max) ?? TIERS[0];
 }
 
-function spin() {
-  return [weighted(), weighted(), weighted()];
+function weightedPick(weights) {
+  const total = weights.reduce((a, w) => a + w, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < BASE_SYMBOLS.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return BASE_SYMBOLS[i];
+  }
+  return BASE_SYMBOLS[0];
+}
+
+function spin(bet) {
+  const { weights } = getTier(bet);
+  return [weightedPick(weights), weightedPick(weights), weightedPick(weights)];
 }
 
 function calcWin(reels, bet) {
@@ -32,6 +66,17 @@ function calcWin(reels, bet) {
   return { type: 'lose', win: 0, mult: 0 };
 }
 
+function parseBet(raw) {
+  let s = raw.trim().toUpperCase().replace(/\s/g, '');
+  if (s.endsWith('K')) {
+    const num = parseFloat(s.slice(0, -1).replace(',', '.'));
+    if (isNaN(num)) return NaN;
+    return Math.floor(num * 1000);
+  }
+  s = s.replace(/[.,]/g, '');
+  return parseInt(s, 10);
+}
+
 const LINE = '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501';
 
 function reelRow(reels, frame) {
@@ -40,27 +85,7 @@ function reelRow(reels, frame) {
 }
 
 function machineSection(reels, frame) {
-  return (
-    LINE + '\n' +
-    reelRow(reels, frame) + '\n' +
-    LINE
-  );
-}
-
-const QUESTION = { emoji: '\u2753' };
-
-function buildBetEmbed(balance) {
-  return new EmbedBuilder()
-    .setTitle('\uD83C\uDFB0  G T A  R P  C A S I N O')
-    .setDescription(
-      '\uD83C\uDFAF **W\xE4hle deinen Einsatz!**\n\n' +
-      machineSection([QUESTION, QUESTION, QUESTION], 3) +
-      '\n\n\uD83C\uDFE6 **Guthaben:** ' + balance.toLocaleString('de-DE') + ' Jetons\n\n' +
-      '\u26A1 **Gewinnm\xF6glichkeiten:**\n' +
-      SYMBOLS.map(s => `${s.emoji} x3 \u2192 **x${s.mult}**`).join('  |  ')
-    )
-    .setColor(0xFFD700)
-    .setFooter({ text: 'GTA RP Casino \u2022 Viel Gl\xFCck!' });
+  return LINE + '\n' + reelRow(reels, frame) + '\n' + LINE;
 }
 
 const SPIN_STATUS = [
@@ -69,66 +94,71 @@ const SPIN_STATUS = [
   '\uD83D\uDFE2 \uD83D\uDFE2 Zweite Rolle gestoppt!\n\uD83C\uDF00 **Letzte Rolle dreht...**',
 ];
 
+function buildModal(userId) {
+  const modal = new ModalBuilder()
+    .setCustomId(`sm|modal|${userId}`)
+    .setTitle('\uD83C\uDFB0 Einsatz w\xE4hlen');
+  const input = new TextInputBuilder()
+    .setCustomId('bet_amount')
+    .setLabel('Einsatz (1.000 \u2013 250.000 Jetons)')
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder('z.B. 5000 oder 50K')
+    .setRequired(true)
+    .setMinLength(1)
+    .setMaxLength(7);
+  modal.addComponents(new ActionRowBuilder().addComponents(input));
+  return modal;
+}
+
 function buildSpinEmbed(reels, bet, balance, frame) {
+  const tier = getTier(bet);
   return new EmbedBuilder()
-    .setTitle('\uD83C\uDFB0  G T A  R P  C A S I N O')
+    .setTitle('\uD83C\uDFB0  ' + BRAND)
     .setDescription(
       machineSection(reels, frame) + '\n\n' +
       SPIN_STATUS[frame] + '\n\n' +
       `\uD83D\uDCB0 **Einsatz:** ${bet.toLocaleString('de-DE')} Jetons\n` +
-      `\uD83C\uDFE6 **Guthaben:** ${balance.toLocaleString('de-DE')} Jetons`
+      `\uD83C\uDFE6 **Guthaben:** ${balance.toLocaleString('de-DE')} Jetons\n` +
+      `\uD83C\uDFB2 **Gl\xFCcks-Tier:** ${tier.label}`
     )
-    .setColor(0xFF8C00)
-    .setFooter({ text: 'GTA RP Casino \u2022 Viel Gl\xFCck!' });
+    .setColor(LIGHT_BLUE)
+    .setFooter({ text: BRAND + ' \u2022 Viel Gl\xFCck!' });
 }
 
 function buildResultEmbed(reels, bet, result, finalBalance) {
-  let resultText, color;
+  const tier = getTier(bet);
+  let resultText;
   if (result.type === 'jackpot') {
-    color = 0xFFD700;
     resultText =
       `\uD83C\uDF89 **JACKPOT! 3x ${result.symbol.name}!**\n` +
       `Multiplikator: **x${result.mult}**\n` +
       `\uD83D\uDCB8 Gewinn: **+${result.win.toLocaleString('de-DE')} Jetons**`;
   } else if (result.type === 'pair') {
-    color = 0x00C853;
     resultText =
       `\uD83D\uDCB0 **Zwei Gleiche! Kleiner Gewinn!**\n` +
       `\uD83D\uDCB8 Gewinn: **+${result.win.toLocaleString('de-DE')} Jetons**`;
   } else {
-    color = 0xFF3D00;
     resultText =
       `\uD83D\uDC94 **Leider nichts diesmal...**\n` +
       `Verlust: **-${bet.toLocaleString('de-DE')} Jetons**`;
   }
   return new EmbedBuilder()
-    .setTitle('\uD83C\uDFB0  G T A  R P  C A S I N O  \u2013  Ergebnis')
+    .setTitle('\uD83C\uDFB0  ' + BRAND + '  \u2013  Ergebnis')
     .setDescription(
       machineSection(reels, 3) + '\n\n' +
       resultText + '\n\n' +
-      `\uD83C\uDFE6 **Neues Guthaben:** ${finalBalance.toLocaleString('de-DE')} Jetons`
+      `\uD83C\uDFE6 **Neues Guthaben:** ${finalBalance.toLocaleString('de-DE')} Jetons\n` +
+      `\uD83C\uDFB2 **Gl\xFCcks-Tier:** ${tier.label}`
     )
-    .setColor(color)
-    .setFooter({ text: 'GTA RP Casino \u2022 Weiterspielen?' });
-}
-
-function betRows(balance, userId) {
-  const btn = (bet) => new ButtonBuilder()
-    .setCustomId(`sm|bet|${bet}|${userId}`)
-    .setLabel(`${bet} Jetons`)
-    .setStyle(balance >= bet ? ButtonStyle.Primary : ButtonStyle.Secondary)
-    .setDisabled(balance < bet);
-  return [
-    new ActionRowBuilder().addComponents(btn(10), btn(25), btn(50)),
-    new ActionRowBuilder().addComponents(btn(100), btn(250), btn(500)),
-  ];
+    .setColor(LIGHT_BLUE)
+    .setFooter({ text: BRAND + ' \u2022 Weiterspielen?' });
 }
 
 function gameRows(bet, balance, userId) {
   return [new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`sm|continue|${userId}`)
-      .setLabel(`\uD83D\uDD04 Weiterspielen (${bet} Jetons)`)
+      .setLabel(`\uD83D\uDD04 Weiterspielen (${bet.toLocaleString('de-DE')} Jetons)`)
       .setStyle(ButtonStyle.Success)
       .setDisabled(balance < bet),
     new ButtonBuilder()
@@ -142,4 +172,4 @@ function gameRows(bet, balance, userId) {
   )];
 }
 
-module.exports = { spin, calcWin, buildBetEmbed, buildSpinEmbed, buildResultEmbed, betRows, gameRows };
+module.exports = { spin, calcWin, parseBet, buildModal, buildSpinEmbed, buildResultEmbed, gameRows };
