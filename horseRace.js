@@ -8,12 +8,11 @@ const BRAND      = 'The Diamond Casino Richman \u2013 Inside Track';
 const TRACK_LEN  = 10;
 
 const HORSES = [
-  { id: 0, name: 'Blitz',            odds: 2.0,  weight: 30, dot: '\uD83D\uDD34' },
-  { id: 1, name: 'Donnerhuf',        odds: 3.0,  weight: 25, dot: '\uD83D\uDFE0' },
-  { id: 2, name: 'Silberpfeil',      odds: 4.5,  weight: 20, dot: '\uD83D\uDFE1' },
-  { id: 3, name: 'Sturmwind',        odds: 6.0,  weight: 15, dot: '\uD83D\uDFE2' },
-  { id: 4, name: 'Mondlicht',        odds: 10.0, weight: 7,  dot: '\uD83D\uDD35' },
-  { id: 5, name: 'Geisterj\xE4ger', odds: 20.0, weight: 3,  dot: '\uD83D\uDFE3' },
+  { id: 0, name: 'Walzer',       odds: 2.0,  weight: 32, dot: '\uD83D\uDD34' },
+  { id: 1, name: 'Gebemeier',    odds: 3.0,  weight: 26, dot: '\uD83D\uDFE0' },
+  { id: 2, name: 'Gablestecher', odds: 5.0,  weight: 20, dot: '\uD83D\uDFE1' },
+  { id: 3, name: 'Taschenbier',  odds: 8.0,  weight: 14, dot: '\uD83D\uDFE2' },
+  { id: 4, name: 'M\xF6senreiter', odds: 15.0, weight: 8, dot: '\uD83D\uDD35' },
 ];
 
 function pickWinner() {
@@ -79,7 +78,7 @@ function selectRows(userId) {
   const r2 = new ActionRowBuilder();
   for (let i = 0; i < 3; i++)
     r1.addComponents(new ButtonBuilder().setCustomId(`hr|pick|${i}|${userId}`).setLabel(`${HORSES[i].name} x${HORSES[i].odds.toFixed(1)}`).setStyle(ButtonStyle.Primary));
-  for (let i = 3; i < 6; i++)
+  for (let i = 3; i < 5; i++)
     r2.addComponents(new ButtonBuilder().setCustomId(`hr|pick|${i}|${userId}`).setLabel(`${HORSES[i].name} x${HORSES[i].odds.toFixed(1)}`).setStyle(ButtonStyle.Primary));
   return [r1, r2];
 }
