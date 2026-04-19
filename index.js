@@ -1,8 +1,6 @@
 require("dotenv").config();
 
-const { Client, GatewayIntentBits, Collection } = require("discord.js");
-const fs = require("fs");
-const path = require("path");
+const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 
 const client = new Client({
   intents: [
@@ -15,17 +13,6 @@ const client = new Client({
 
 const PREFIX = "!";
 
-client.commands = new Collection();
-
-const commandFiles = fs
-  .readdirSync(path.join(__dirname, "commands"))
-  .filter((f) => f.endsWith(".js"));
-
-for (const file of commandFiles) {
-  const command = require(`./commands/${file}`);
-  client.commands.set(command.name, command);
-}
-
 client.once("ready", () => {
   console.log(`[INFO] Bot ist online! Eingeloggt als: ${client.user.tag}`);
 });
@@ -35,16 +22,22 @@ client.on("messageCreate", (message) => {
   if (!message.content.startsWith(PREFIX)) return;
 
   const args = message.content.slice(PREFIX.length).trim().split(/\s+/);
-  const commandName = args.shift().toLowerCase();
+  const command = args.shift().toLowerCase();
 
-  const command = client.commands.get(commandName);
-  if (!command) return;
+  if (command === "hallo") {
+    const embed = new EmbedBuilder()
+      .setTitle("\ud83c\udfb0 GTA RP Casino \u2013 Willkommen!")
+      .setDescription(
+        `Hallo, **${message.author.username}**! \ud83d\udc4b\n\n` +
+        "Willkommen im **GTA Roleplay Casino Bot**!\n" +
+        "Hier kannst du dein Glueck in spannenden Casino-Spielen versuchen.\n\n" +
+        "\u2728 Schreib `!hilfe` fuer eine Liste aller Befehle."
+      )
+      .setColor(0xffd700)
+      .setFooter({ text: "GTA RP Casino Bot" })
+      .setTimestamp();
 
-  try {
-    command.execute(message, args);
-  } catch (error) {
-    console.error(`[FEHLER] Command ${commandName}:`, error);
-    message.reply("Es ist ein Fehler aufgetreten!");
+    message.reply({ embeds: [embed] });
   }
 });
 
