@@ -27,14 +27,8 @@ const TIERS = [
   {
     label:   '\uD83D\uDFE2 Erh\xF6htes Gl\xFCck',
     min:     10000,
-    max:     49999,
+    max:     15000,
     weights: [26, 21, 17, 15, 11,  6,  4],
-  },
-  {
-    label:   '\uD83D\uDD25 Hohes Gl\xFCck',
-    min:     50000,
-    max:     250000,
-    weights: [22, 17, 14, 14, 15, 11,  7],
   },
 ];
 
