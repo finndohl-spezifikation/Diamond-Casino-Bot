@@ -216,7 +216,51 @@ client.once('clientReady', async () => {
   } catch (e) {
     console.error('[FEHLER] Ticket-Embed:', e.message);
   }
-});
+
+  /* Casino-Embed einmalig senden (falls noch kein Bot-Embed vorhanden) */
+  try {
+    const guild = client.guilds.cache.first();
+    if (guild) {
+      const casinoUrl = process.env.CASINO_URL || 'https://diamond-casino-richman.replit.app';
+      const casinoCh = guild.channels.cache.get('1495234695624134808');
+      if (casinoCh) {
+        const msgs = await casinoCh.messages.fetch({ limit: 10 });
+        const alreadySent = msgs.some(
+          (m) => m.author.id === client.user.id && m.components.length > 0
+        );
+        if (!alreadySent) {
+          const casinoEmbed = new EmbedBuilder()
+            .setTitle('🎰 Diamond Casino Richman')
+            .setDescription(
+              'Willkommen im **The Diamond Casino Richman** Online Casino!
+
+' +
+              '💰 Spiele unsere exklusiven Slot-Maschinen und gewinne Jetons!
+' +
+              '🏆 Dein Guthaben wird direkt mit deinem Discord-Konto synchronisiert.
+
+' +
+              '_Klicke auf **Spielen** – du wirst automatisch erkannt._'
+            )
+            .setColor(LIGHT_BLUE)
+            .setFooter({ text: BRAND })
+            .setTimestamp();
+          const casinoRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setLabel('Spielen').setStyle(ButtonStyle.Primary).setCustomId('casino|enter')
+          );
+          await casinoCh.send({ embeds: [casinoEmbed], components: [casinoRow] });
+          console.log('[INFO] Casino-Embed gesendet.');
+        } else {
+          console.log('[INFO] Casino-Embed bereits vorhanden, uebersprungen.');
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[FEHLER] Casino-Embed:', e.message);
+  }
+
+});"
+
 
 /* ══════════════════════════════════════
    MEMBER JOIN
