@@ -232,14 +232,9 @@ client.once('clientReady', async () => {
           const casinoEmbed = new EmbedBuilder()
             .setTitle('🎰 Diamond Casino Richman')
             .setDescription(
-              'Willkommen im **The Diamond Casino Richman** Online Casino!
-
-' +
-              '💰 Spiele unsere exklusiven Slot-Maschinen und gewinne Jetons!
-' +
-              '🏆 Dein Guthaben wird direkt mit deinem Discord-Konto synchronisiert.
-
-' +
+              'Willkommen im **The Diamond Casino Richman** Online Casino!\n\n' +
+              '💰 Spiele unsere exklusiven Slot-Maschinen und gewinne Jetons!\n' +
+              '🏆 Dein Guthaben wird direkt mit deinem Discord-Konto synchronisiert.\n\n' +
               '_Klicke auf **Spielen** – du wirst automatisch erkannt._'
             )
             .setColor(LIGHT_BLUE)
@@ -259,7 +254,7 @@ client.once('clientReady', async () => {
     console.error('[FEHLER] Casino-Embed:', e.message);
   }
 
-});"
+});
 
 
 /* ══════════════════════════════════════
