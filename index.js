@@ -10,7 +10,6 @@ const {
 
 const eco         = require('./economy');
 const sm          = require('./slotMachine');
-const hr          = require('./horseRace');
 const bj          = require('./blackjack');
 const rl          = require('./roulette');
 const pk          = require('./poker');
@@ -31,10 +30,8 @@ const VIP_ROLE         = '1495238055378817054';
 const WELCOME_CH    = '1495230944980897903';
 const FAREWELL_CH   = '1495230977046216745';
 const TICKET_CH     = '1495233961427734579';
-const CH_SLOT       = '1495234695624134808';
 const CH_ROULETTE   = '1495234739139772456';
 const CH_BLACKJACK  = '1495234818810577018';
-const CH_TRACK      = '1495235200689373224';
 const CH_POKER      = '1495234770311974992';
 
 const LIGHT_BLUE = 0x00BFFF;
@@ -44,8 +41,6 @@ if (!TOKEN)     { console.error('[FEHLER] DISCORD_TOKEN fehlt!'); process.exit(1
 if (!CLIENT_ID) { console.error('[FEHLER] CLIENT_ID fehlt!');     process.exit(1); }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const sessions   = new Map();
-const hrSessions = new Map();
 const bjSessions = new Map();
 const rlSessions = new Map();
 const pkSessions = new Map();
@@ -81,9 +76,7 @@ const commands = [
     .addIntegerOption((o) => o.setName('menge').setDescription('Wie viele? (1\u2013100)').setRequired(true).setMinValue(1).setMaxValue(100))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
 
-  new SlashCommandBuilder().setName('slot-machine').setDescription('\uD83C\uDFB0 Spiele an der Slot Machine'),
   new SlashCommandBuilder().setName('roulette').setDescription('\uD83C\uDFB2 Spiele Roulette (bis zu 4 Spieler)'),
-  new SlashCommandBuilder().setName('inside-track').setDescription('\uD83C\uDFB4 Pferde-Rennen im Inside Track'),
   new SlashCommandBuilder().setName('blackjack').setDescription('\uD83C\uDCCF Spiele Blackjack (bis zu 4 Spieler)'),
   new SlashCommandBuilder().setName('poker').setDescription('\uD83C\uDCCF Spiele 3-Karten Poker (bis zu 4 Spieler)'),
 ].map((c) => c.toJSON());
@@ -353,13 +346,6 @@ client.on('interactionCreate', async (interaction) => {
       } catch (e) { return interaction.editReply({ content: `\u274C Fehler: ${e.message}` }); }
     }
 
-    if (cmd === 'slot-machine') {
-      if (!checkChannel(interaction, CH_SLOT)) return;
-      if (eco.get(interaction.user.id) < 1000) return interaction.reply({ content: '\uD83D\uDED2 Mindestens **1.000 Jetons** n\xF6tig!', flags: MessageFlags.Ephemeral });
-      sessions.set(interaction.user.id, { bet: 0, spinning: false });
-      return interaction.showModal(sm.buildModal(interaction.user.id));
-    }
-
     if (cmd === 'roulette') {
       if (!checkChannel(interaction, CH_ROULETTE)) return;
       if (eco.get(interaction.user.id) < 1000) return interaction.reply({ content: '\uD83D\uDED2 Mindestens **1.000 Jetons** n\xF6tig!', flags: MessageFlags.Ephemeral });
@@ -372,12 +358,6 @@ client.on('interactionCreate', async (interaction) => {
       return interaction.showModal(pk.buildModal(interaction.user.id));
     }
 
-    if (cmd === 'inside-track') {
-      if (!checkChannel(interaction, CH_TRACK)) return;
-      if (eco.get(interaction.user.id) < 1000) return interaction.reply({ content: '\uD83D\uDED2 Mindestens **1.000 Jetons** n\xF6tig!', flags: MessageFlags.Ephemeral });
-      return interaction.showModal(hr.buildModal(interaction.user.id));
-    }
-
     if (cmd === 'blackjack') {
       if (!checkChannel(interaction, CH_BLACKJACK)) return;
       if (eco.get(interaction.user.id) < 1000) return interaction.reply({ content: '\uD83D\uDED2 Mindestens **1.000 Jetons** n\xF6tig!', flags: MessageFlags.Ephemeral });
@@ -388,28 +368,6 @@ client.on('interactionCreate', async (interaction) => {
   /* ─── MODAL SUBMITS ─── */
   if (interaction.isModalSubmit()) {
     const { customId } = interaction;
-
-    if (customId.startsWith('sm|modal|')) {
-      const userId = customId.split('|')[2];
-      if (interaction.user.id !== userId) return;
-      const bet = sm.parseBet(interaction.fields.getTextInputValue('bet_amount'));
-      if (isNaN(bet) || bet < 1000 || bet > 15000) return interaction.reply({ content: '\u274C Einsatz muss zwischen **1.000** und **15.000** Jetons liegen!', flags: MessageFlags.Ephemeral });
-      const bal = eco.get(userId);
-      if (bal < bet) return interaction.reply({ content: `\u274C Nicht genug Jetons! Du hast **${bal.toLocaleString('de-DE')}**.`, flags: MessageFlags.Ephemeral });
-      sessions.set(userId, { bet, spinning: false });
-      return await runSpin(interaction, userId, bet, true);
-    }
-
-    if (customId.startsWith('hr|modal|')) {
-      const userId = customId.split('|')[2];
-      if (interaction.user.id !== userId) return;
-      const bet = sm.parseBet(interaction.fields.getTextInputValue('bet_amount'));
-      if (isNaN(bet) || bet < 1000 || bet > 250000) return interaction.reply({ content: '\u274C Ung\xFCltiger Einsatz!', flags: MessageFlags.Ephemeral });
-      const bal = eco.get(userId);
-      if (bal < bet) return interaction.reply({ content: `\u274C Nicht genug Jetons! Du hast **${bal.toLocaleString('de-DE')}**.`, flags: MessageFlags.Ephemeral });
-      hrSessions.set(userId, { bet, running: false });
-      return interaction.reply({ embeds: [hr.buildSelectEmbed(bet)], components: hr.selectRows(userId) });
-    }
 
     if (customId.startsWith('bj|modal|')) {
       const hostId = customId.split('|')[2];
@@ -558,45 +516,6 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.reply({ content: '\uD83D\uDD12 Ticket wird geschlossen...' });
       await sleep(2000);
       if (ch) ch.delete().catch(() => {});
-      return;
-    }
-
-    /* ── Slot Machine ── */
-    if (customId.startsWith('sm|')) {
-      const parts = customId.split('|'), action = parts[1], ownerId = parts[parts.length - 1];
-      if (interaction.user.id !== ownerId) return interaction.reply({ content: '\u274C Nicht deine Slot Machine!', flags: MessageFlags.Ephemeral });
-      const session = sessions.get(ownerId);
-      if (action === 'quit') { sessions.delete(ownerId); return interaction.update({ embeds: [new EmbedBuilder().setTitle('\uD83C\uDFB0 Slot Machine beendet').setDescription(`\uD83C\uDFE6 Guthaben: **${eco.get(ownerId).toLocaleString('de-DE')} Jetons**`).setColor(LIGHT_BLUE).setFooter({ text: BRAND })], components: [] }); }
-      if (action === 'changebeta') return interaction.showModal(sm.buildModal(ownerId));
-      if (action === 'continue') {
-        if (!session) return interaction.reply({ content: '\u274C Sitzung abgelaufen.', flags: MessageFlags.Ephemeral });
-        if (session.spinning) return interaction.reply({ content: '\u23F3 Dreht sich noch!', flags: MessageFlags.Ephemeral });
-        await runSpin(interaction, ownerId, session.bet, false);
-      }
-      return;
-    }
-
-    /* ── Horse Race ── */
-    if (customId.startsWith('hr|')) {
-      const parts = customId.split('|'), action = parts[1], ownerId = parts[parts.length - 1];
-      if (interaction.user.id !== ownerId) return interaction.reply({ content: '\u274C Nicht dein Rennen!', flags: MessageFlags.Ephemeral });
-      const session = hrSessions.get(ownerId);
-      if (action === 'quit') { hrSessions.delete(ownerId); return interaction.update({ embeds: [new EmbedBuilder().setTitle('\uD83C\uDFB4 Inside Track beendet').setDescription(`\uD83C\uDFE6 Guthaben: **${eco.get(ownerId).toLocaleString('de-DE')} Jetons**`).setColor(LIGHT_BLUE).setFooter({ text: BRAND })], components: [] }); }
-      if (action === 'again') { hrSessions.set(ownerId, { bet: session?.bet ?? 1000, running: false }); return interaction.showModal(hr.buildModal(ownerId)); }
-      if (action === 'pick') {
-        if (!session || session.running) return interaction.reply({ content: '\u274C Kein aktives Rennen.', flags: MessageFlags.Ephemeral });
-        const horseId = parseInt(parts[2], 10), pickedHorse = hr.HORSES[horseId], { bet } = session;
-        if (eco.get(ownerId) < bet) return interaction.update({ embeds: [new EmbedBuilder().setTitle('\uD83C\uDFB4 Inside Track').setDescription('\u274C Nicht genug Jetons!').setColor(LIGHT_BLUE)], components: [] });
-        session.running = true;
-        await interaction.deferUpdate();
-        const winner = hr.pickWinner(), raceData = hr.simulateRace(winner.id);
-        eco.remove(ownerId, bet);
-        for (let f = 1; f <= 5; f++) { await interaction.editReply({ embeds: [hr.buildRaceEmbed(raceData, f, pickedHorse, bet)], components: [] }); await sleep(1200); }
-        const payout = winner.id === pickedHorse.id ? Math.floor(bet * pickedHorse.odds) : 0;
-        if (payout > 0) eco.add(ownerId, payout);
-        await interaction.editReply({ embeds: [hr.buildResultEmbed(raceData, winner, pickedHorse, bet, payout, eco.get(ownerId))], components: hr.endRow(ownerId) });
-        session.running = false;
-      }
       return;
     }
 
@@ -822,26 +741,5 @@ async function bjDealerPlay(interaction, hostId) {
   return interaction.editReply({ embeds: [bj.buildResultEmbed(session)], components: bj.endRow(hostId) });
 }
 
-/* ══════════════════════════════════════
-   SLOT MACHINE
-══════════════════════════════════════ */
-async function runSpin(interaction, userId, bet, isModal) {
-  if (isModal) await interaction.deferReply(); else await interaction.deferUpdate();
-  const session = sessions.get(userId);
-  if (session) session.spinning = true;
-  const balBefore = eco.get(userId);
-  if (balBefore < bet) { if (session) session.spinning = false; return interaction.editReply({ content: `\u274C Nicht genug Jetons!` }); }
-  eco.remove(userId, bet);
-  const reels = sm.spin(bet), result = sm.calcWin(reels, bet);
-  if (result.win > 0) eco.add(userId, result.win);
-  const finalBal = eco.get(userId);
-  try {
-    await interaction.editReply({ embeds: [sm.buildSpinEmbed(reels, bet, balBefore, 0)], components: [] }); await sleep(1300);
-    await interaction.editReply({ embeds: [sm.buildSpinEmbed(reels, bet, balBefore, 1)], components: [] }); await sleep(1300);
-    await interaction.editReply({ embeds: [sm.buildSpinEmbed(reels, bet, balBefore, 2)], components: [] }); await sleep(1300);
-    await interaction.editReply({ embeds: [sm.buildResultEmbed(reels, bet, result, finalBal)], components: sm.gameRows(bet, finalBal, userId) });
-  } catch (err) { console.error('[FEHLER] Slot:', err.message); }
-  if (session) session.spinning = false;
-}
 
 client.login(TOKEN);
