@@ -181,7 +181,12 @@ async function createTicketChannel(guild, userId, username, type) {
    CLIENT
 ══════════════════════════════════════ */
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+  intents: [
+    GatewayIntentBits.Guilds,
+    // GatewayIntentBits.GuildMembers  <-- PRIVILEGED: enable in
+    // Discord Dev Portal -> Bot -> Server Members Intent first,
+    // then uncomment this line to restore guildMemberAdd events.
+  ],
 });
 
 client.once('clientReady', async () => {
