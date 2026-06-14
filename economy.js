@@ -1,43 +1,28 @@
-const fs = require('fs');
-const path = require('path');
+const { Pool } = require('pg');
 
-function resolveDataDir() {
-  const preferred = process.env.DATA_DIR || '/data';
-  try {
-    fs.mkdirSync(preferred, { recursive: true });
-    fs.accessSync(preferred, fs.constants.W_OK);
-    return preferred;
-  } catch {
-    const fallback = path.join(__dirname, 'data');
-    fs.mkdirSync(fallback, { recursive: true });
-    return fallback;
-  }
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+async function get(id) {
+  const { rows } = await pool.query(
+    'SELECT balance FROM economy WHERE discord_id = $1',
+    [id]
+  );
+  return rows[0]?.balance ?? 5000;
 }
 
-const DATA_DIR = resolveDataDir();
-const DB = path.join(DATA_DIR, 'jetons.json');
-
-function load() {
-  if (!fs.existsSync(DB)) { fs.writeFileSync(DB, '{}', 'utf8'); return {}; }
-  try { return JSON.parse(fs.readFileSync(DB, 'utf8')); } catch { return {}; }
+async function set(id, n) {
+  const val = Math.max(0, Math.floor(n));
+  const { rows } = await pool.query(
+    `INSERT INTO economy (discord_id, balance) VALUES ($1, $2)
+     ON CONFLICT (discord_id) DO UPDATE SET balance = $2, updated_at = NOW()
+     RETURNING balance`,
+    [id, val]
+  );
+  return rows[0].balance;
 }
 
-function save(data) {
-  fs.writeFileSync(DB, JSON.stringify(data, null, 2), 'utf8');
-}
-
-function get(id) {
-  return load()[id] ?? 0;
-}
-
-function set(id, n) {
-  const db = load();
-  db[id] = Math.max(0, Math.floor(n));
-  save(db);
-  return db[id];
-}
-
-function add(id, n) { return set(id, get(id) + n); }
-function remove(id, n) { return set(id, get(id) - n); }
+async function add(id, n) { return set(id, (await get(id)) + n); }
+async function remove(id, n) { return set(id, (await get(id)) - n); }
 
 module.exports = { get, set, add, remove };
+
