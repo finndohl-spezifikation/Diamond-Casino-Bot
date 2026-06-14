@@ -367,7 +367,7 @@ client.on('interactionCreate', async (interaction) => {
         .setFooter({ text: BRAND })
         .setTimestamp();
       const casinoRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setLabel('Spielen').setStyle(ButtonStyle.Link).setURL(casinoUrl)
+        new ButtonBuilder().setLabel('Spielen').setStyle(ButtonStyle.Primary).setCustomId('casino|enter')
       );
       const casinoCh = interaction.guild?.channels.cache.get('1495234695624134808');
       if (!casinoCh) return interaction.reply({ content: '\u274C Casino-Kanal nicht gefunden!', flags: MessageFlags.Ephemeral });
